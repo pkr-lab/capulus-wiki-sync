@@ -1,0 +1,4 @@
+title = "capulus-wiki-sync"
+
+[extend]
+useDefault = true
