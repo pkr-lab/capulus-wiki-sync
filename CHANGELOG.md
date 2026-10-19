@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/pkr-lab/capulus-wiki-sync/compare/v1.1.0...v1.1.1) (2026-10-19)
+
+### Bug Fixes
+
+* **renovate:** Zeitplan auf ganzen Montag erweitern ([e331f0a](https://github.com/pkr-lab/capulus-wiki-sync/commit/e331f0a8974e0afac496d82cb695a1b815de6a57))
+
 ## [1.1.0](https://github.com/pkr-lab/capulus-wiki-sync/compare/v1.0.0...v1.1.0) (2026-10-18)
 
 ### Features
