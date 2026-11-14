@@ -23,11 +23,11 @@ Python-Programm (`wikisync`), das das Docs-Repo [pkr-lab-docs](https://github.co
 | `wikisync/config.py` | `Config.from_env`, alle Einstellungen per Umgebungsvariable |
 | `wikisync/source.py` | lädt den Tarball des Docs-Repos über die GitHub-API und liest den Baum |
 | `wikisync/render.py` | Seiten bauen: Pfade, Links und Bilder umschreiben, Übersichtsseiten erzeugen |
-| `wikisync/wikijs.py` | GraphQL-Client für Wiki.js |
+| `wikisync/wikijs.py` | REST-Client für Wiki.js 3 |
 | `wikisync/sync.py` | Abgleich: anlegen, ändern, löschen |
 | `tests/` | `unittest`, Hilfen in `tests/helpers.py` (`make_config`) |
 
-Wichtige Variablen: `WIKIJS_API_URL`, `WIKIJS_API_TOKEN` (Pflicht), `WIKIJS_PATH_PREFIX` (Standard `docs`), `GITHUB_OWNER`/`GITHUB_REPO`/`GITHUB_BRANCH`/`GITHUB_TOKEN`, `EXCLUDE`, `WIKIJS_LEGACY_PREFIXES`, `MIN_PAGES` (Standard 20), `DRY_RUN`.
+Wichtige Variablen: `WIKIJS_API_URL`, `WIKIJS_API_TOKEN` (Pflicht), `WIKIJS_PATH_PREFIX` (Standard `docs`), `GITHUB_OWNER`/`GITHUB_REPO`/`GITHUB_BRANCH`/`GITHUB_TOKEN`, `EXCLUDE`, `WIKIJS_LEGACY_PREFIXES`, `MIN_PAGES` (Standard 20), `DRY_RUN`, `WIKIJS_SITE_ID` (optional, sonst über `/_api/bootstrap`), `RENDER_BATCH` (Standard 8, Seiten pro Lauf mit Render).
 
 ---
 

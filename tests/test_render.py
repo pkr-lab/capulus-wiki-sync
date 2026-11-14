@@ -1,6 +1,6 @@
 import unittest
 
-from wikisync.render import CollisionError, build_pages, page_title, rewrite_links, wiki_path
+from wikisync.render import CollisionError, build_pages, page_title, rewrite_links, wiki_path, wrap_diagrams
 from wikisync.source import Tree
 from tests.helpers import make_config
 
@@ -13,7 +13,9 @@ class PathTests(unittest.TestCase):
         self.assertEqual(wiki_path(self.config, "README.md"), "docs")
         self.assertEqual(wiki_path(self.config, "capulus-core/index.md"), "docs/capulus-core")
         self.assertEqual(wiki_path(self.config, "capulus-core/3-apps/300d0-carplay-api.md"), "docs/capulus-core/3-apps/300d0-carplay-api")
-        self.assertEqual(wiki_path(self.config, "x/Datei mit.Punkt.md"), "docs/x/Datei-mit-Punkt")
+        self.assertEqual(wiki_path(self.config, "x/Datei mit.Punkt.md"), "docs/x/datei-mit-punkt")
+        self.assertEqual(wiki_path(self.config, "DocFlowEngine/Mein_Konzept--Neu.md"), "docs/docflowengine/mein-konzept-neu")
+        self.assertEqual(wiki_path(self.config, "x/Übersicht.md"), "docs/x/übersicht")
 
     def test_title_numbered(self):
         self.assertEqual(page_title("a/a0000-ubuntu.md", "# Ubuntu\n"), "a0000 - Ubuntu")
@@ -23,6 +25,27 @@ class PathTests(unittest.TestCase):
 
     def test_title_ignores_fenced_heading(self):
         self.assertEqual(page_title("a/x.md", "```\n# nicht\n```\n# echt\n"), "echt")
+
+
+class DiagramTests(unittest.TestCase):
+    def test_mermaid_is_wrapped(self):
+        text = "Vorher\n```mermaid\nflowchart LR\n  A --> B\n```\nNachher\n"
+        self.assertEqual(
+            wrap_diagrams(text),
+            "Vorher\n::block-diagram\n```mermaid\nflowchart LR\n  A --> B\n```\n::\nNachher\n",
+        )
+
+    def test_other_fences_untouched(self):
+        text = "```bash\nls\n```\n"
+        self.assertEqual(wrap_diagrams(text), text)
+
+    def test_longer_fence_closes_only_with_same_fence(self):
+        text = "````mermaid\ngraph TD\n```\n````\n"
+        self.assertEqual(wrap_diagrams(text), "::block-diagram\n````mermaid\ngraph TD\n```\n````\n::\n")
+
+    def test_two_diagrams(self):
+        text = "```mermaid\na\n```\ntext\n```mermaid\nb\n```\n"
+        self.assertEqual(wrap_diagrams(text).count("::block-diagram"), 2)
 
 
 class LinkTests(unittest.TestCase):

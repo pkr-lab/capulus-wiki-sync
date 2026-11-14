@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from .config import Config
 from .render import CollisionError, Page, build_pages
 from .source import fetch_tarball, read_tree
-from .wikijs import WikiClient, WikiError
+from .wikijs import RenderLimitError, WikiClient, WikiError
 
 
 @dataclass
@@ -13,6 +13,8 @@ class Report:
     updated: list[str] = field(default_factory=list)
     unchanged: int = 0
     deleted: list[str] = field(default_factory=list)
+    deferred: list[str] = field(default_factory=list)
+    rendered: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -29,26 +31,67 @@ def differs(current: dict, page: Page) -> bool:
         normalized(current["content"]) != normalized(page.content)
         or current["title"] != page.title
         or (current.get("description") or "") != page.description
-        or not current.get("isPublished", True)
+        or current.get("publishState", "published") != "published"
     )
+
+
+class RenderBudget:
+    def __init__(self, size: int):
+        self.left = size
+
+    def take(self) -> bool:
+        if self.left < 1:
+            return False
+        self.left -= 1
+        return True
+
+    def exhaust(self) -> None:
+        self.left = 0
+
+
+def queue_render(config: Config, client, budget: RenderBudget, report: Report, page_id: str, path: str) -> None:
+    if config.dry_run:
+        return
+    try:
+        client.queue_render(page_id)
+        report.rendered += 1
+    except RenderLimitError:
+        budget.exhaust()
+        print(f"[WARN] Render-Limit erreicht, {path} wird im nächsten Lauf gerendert", file=sys.stderr)
+    except WikiError as error:
+        print(f"[WARN] Render für {path} nicht eingereiht: {error}", file=sys.stderr)
 
 
 def reconcile(config: Config, client, pages: dict[str, Page]) -> Report:
     report = Report()
+    budget = RenderBudget(10**9 if config.dry_run else config.render_batch)
     existing = client.list_pages()
     for path, page in sorted(pages.items()):
         known = existing.get(path)
         try:
             if known is None:
-                if not config.dry_run:
-                    client.create(path, page.title, page.content, page.description)
+                if not budget.take():
+                    report.deferred.append(path)
+                    continue
+                page_id = None if config.dry_run else client.create(path, page.title, page.content, page.description)
                 report.created.append(path)
                 print(f"[CREATE] /{config.locale}/{path}")
-            elif differs(client.get_page(known.id), page):
+                if page_id:
+                    queue_render(config, client, budget, report, page_id, path)
+                continue
+            current = client.get_page(known.id)
+            if differs(current, page):
+                if not budget.take():
+                    report.deferred.append(path)
+                    continue
                 if not config.dry_run:
                     client.update(known.id, path, page.title, page.content, page.description)
                 report.updated.append(path)
                 print(f"[UPDATE] /{config.locale}/{path}")
+                queue_render(config, client, budget, report, known.id, path)
+            elif not current.get("render") and budget.take():
+                print(f"[RENDER] /{config.locale}/{path}")
+                queue_render(config, client, budget, report, known.id, path)
             else:
                 report.unchanged += 1
         except WikiError as error:
@@ -73,7 +116,7 @@ def reconcile(config: Config, client, pages: dict[str, Page]) -> Report:
 
 
 def run(config: Config, fetch=fetch_tarball, client=None) -> int:
-    client = client or WikiClient(config.api_url, config.api_token, config.locale)
+    client = client or WikiClient(config.api_url, config.api_token, config.locale, config.site_id)
     try:
         data = fetch(config.owner, config.repo, config.branch, config.github_token)
         tree = read_tree(data, config.exclude)
@@ -93,6 +136,7 @@ def run(config: Config, fetch=fetch_tarball, client=None) -> int:
     suffix = " (DryRun)" if config.dry_run else ""
     print(
         f"[DONE]{suffix} neu={len(report.created)} geändert={len(report.updated)} "
-        f"unverändert={report.unchanged} gelöscht={len(report.deleted)} Fehler={len(report.errors)}"
+        f"unverändert={report.unchanged} gelöscht={len(report.deleted)} zurückgestellt={len(report.deferred)} "
+        f"gerendert={report.rendered} Fehler={len(report.errors)}"
     )
     return 1 if report.errors else 0
