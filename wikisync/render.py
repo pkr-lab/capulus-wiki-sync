@@ -1,5 +1,6 @@
 import posixpath
 import re
+import unicodedata
 from dataclasses import dataclass
 
 from .config import Config
@@ -11,7 +12,8 @@ CODE_SPAN = re.compile(r"(`+[^`]*`+)")
 MD_LINK = re.compile(r"(!?\[[^\]]*\]\()([^)\s]+)((?:\s+\"[^\"]*\")?\))")
 HTML_ATTR = re.compile(r"(\b(?:src|href)=\")([^\"]+)(\")")
 NUMBERED = re.compile(r"^([0-9a-f]{5})[-_.]")
-SEGMENT = re.compile(r"[^\w-]+")
+SEGMENT = re.compile(r"[\W_]+")
+MERMAID_OPEN = re.compile(r"^(`{3,}|~{3,})\s*mermaid\s*$")
 
 
 class CollisionError(Exception):
@@ -26,7 +28,26 @@ class Page:
 
 
 def segment(name: str) -> str:
-    return SEGMENT.sub("-", name).strip("-") or "seite"
+    return SEGMENT.sub("-", unicodedata.normalize("NFC", name).lower()).strip("-") or "seite"
+
+
+def wrap_diagrams(text: str) -> str:
+    lines = []
+    fence: str | None = None
+    for line in text.split("\n"):
+        if fence is None:
+            opening = MERMAID_OPEN.match(line)
+            if opening:
+                fence = opening.group(1)
+                lines += ["::block-diagram", line]
+                continue
+            lines.append(line)
+            continue
+        lines.append(line)
+        if line.rstrip() == fence:
+            lines.append("::")
+            fence = None
+    return "\n".join(lines)
 
 
 def directory_path(config: Config, directory: str) -> str:
@@ -193,7 +214,7 @@ def build_pages(config: Config, tree: Tree) -> dict[str, Page]:
             wiki_path(config, relative),
             Page(
                 title=titles[relative],
-                content=rewrite_links(config, tree, relative, text),
+                content=wrap_diagrams(rewrite_links(config, tree, relative, text)),
                 description=f"Quelle: {config.owner}/{config.repo}/{relative}",
             ),
             relative,

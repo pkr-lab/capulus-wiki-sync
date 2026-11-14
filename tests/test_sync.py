@@ -44,6 +44,7 @@ class RunTests(unittest.TestCase):
         code, out, _ = execute(self.config, client)
         self.assertEqual(code, 0)
         self.assertEqual(sorted(path for action, path in client.calls if action == "create"), ["docs", "docs/p", "docs/p/sub", "docs/p/sub/a0010-x"])
+        self.assertEqual(sorted(path for action, path in client.calls if action == "render"), ["docs", "docs/p", "docs/p/sub", "docs/p/sub/a0010-x"])
         self.assertEqual(client.pages["docs/p/sub/a0010-x"]["title"], "a0010 - X")
         self.assertIn("(/en/docs/p)", client.pages["docs/p/sub/a0010-x"]["content"])
         client.calls.clear()
@@ -58,7 +59,7 @@ class RunTests(unittest.TestCase):
         client.calls.clear()
         changed = dict(FILES, **{"p/index.md": "# P neu\n"})
         execute(self.config, client, changed)
-        self.assertEqual(client.calls, [("update", "docs/p")])
+        self.assertEqual(client.calls, [("update", "docs/p"), ("render", "docs/p")])
 
     def test_deletes_removed_sources_only_under_prefix(self):
         client = FakeClient({"other/page": {"title": "o", "content": "o", "description": ""}})
@@ -103,6 +104,58 @@ class RunTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+class RenderTests(unittest.TestCase):
+    def setUp(self):
+        self.config = make_config(exclude=("scripts/**", "CLAUDE.md", ".github/**"))
+
+    def test_budget_defers_creates(self):
+        client = FakeClient()
+        code, out, _ = execute(make_config(exclude=self.config.exclude, render_batch=2), client)
+        self.assertEqual(code, 0)
+        self.assertEqual(len([call for call in client.calls if call[0] == "create"]), 2)
+        self.assertIn("zurückgestellt=2", out)
+        for _ in range(2):
+            execute(make_config(exclude=self.config.exclude, render_batch=2), client)
+        self.assertEqual(len(client.pages), 4)
+
+    def test_budget_defers_updates_and_keeps_old_content(self):
+        client = FakeClient()
+        execute(self.config, client)
+        client.calls.clear()
+        changed = dict(FILES, **{"p/index.md": "# P neu\n", "README.md": "# Home neu\n"})
+        limited = make_config(exclude=self.config.exclude, render_batch=1)
+        code, out, _ = execute(limited, client, changed)
+        self.assertEqual(len([call for call in client.calls if call[0] == "update"]), 1)
+        self.assertIn("zurückgestellt=1", out)
+        execute(limited, client, changed)
+        self.assertEqual(len([call for call in client.calls if call[0] == "update"]), 2)
+
+    def test_page_without_render_is_rendered_again(self):
+        client = FakeClient()
+        execute(self.config, client)
+        client.pages["docs/p"]["render"] = ""
+        client.calls.clear()
+        code, out, _ = execute(self.config, client)
+        self.assertEqual(code, 0)
+        self.assertEqual(client.calls, [("render", "docs/p")])
+        self.assertIn("[RENDER] /en/docs/p", out)
+
+    def test_render_limit_is_not_an_error_and_heals_next_run(self):
+        client = FakeClient(render_limit=1)
+        code, _, err = execute(self.config, client)
+        self.assertEqual(code, 0)
+        self.assertIn("Render-Limit", err)
+        client.render_limit = None
+        client.calls.clear()
+        execute(self.config, client)
+        self.assertTrue(all(page["render"] for page in client.pages.values()))
+
+    def test_dry_run_queues_no_render(self):
+        client = FakeClient()
+        execute(make_config(exclude=self.config.exclude, dry_run=True), client)
+        self.assertEqual(client.calls, [])
+
+
 class ConfigTests(unittest.TestCase):
     def test_required(self):
         with self.assertRaises(ConfigError):
@@ -115,6 +168,18 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.legacy_prefixes, ("Github/capulus-core", "x"))
         self.assertIn("capulus-core/archiv/**", config.exclude)
         self.assertFalse(config.dry_run)
+        self.assertEqual(config.site_id, "")
+        self.assertEqual(config.render_batch, 8)
+
+    def test_site_and_render_batch(self):
+        config = Config.from_env({"WIKIJS_API_URL": "http://w", "WIKIJS_API_TOKEN": "t", "WIKIJS_SITE_ID": " abc ", "RENDER_BATCH": "3"})
+        self.assertEqual(config.site_id, "abc")
+        self.assertEqual(config.render_batch, 3)
+
+    def test_render_batch_invalid(self):
+        for value in ("x", "0"):
+            with self.assertRaises(ConfigError):
+                Config.from_env({"WIKIJS_API_URL": "http://w", "WIKIJS_API_TOKEN": "t", "RENDER_BATCH": value})
 
 
 if __name__ == "__main__":
