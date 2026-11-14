@@ -108,15 +108,28 @@ class RenderTests(unittest.TestCase):
     def setUp(self):
         self.config = make_config(exclude=("scripts/**", "CLAUDE.md", ".github/**"))
 
-    def test_budget_defers_creates(self):
+    def test_creates_are_not_limited_but_renders_are(self):
         client = FakeClient()
-        code, out, _ = execute(make_config(exclude=self.config.exclude, render_batch=2), client)
+        config = make_config(exclude=self.config.exclude, render_batch=2)
+        code, out, _ = execute(config, client)
         self.assertEqual(code, 0)
-        self.assertEqual(len([call for call in client.calls if call[0] == "create"]), 2)
-        self.assertIn("zurückgestellt=2", out)
-        for _ in range(2):
-            execute(make_config(exclude=self.config.exclude, render_batch=2), client)
-        self.assertEqual(len(client.pages), 4)
+        self.assertEqual(len([call for call in client.calls if call[0] == "create"]), 4)
+        self.assertEqual(len([call for call in client.calls if call[0] == "render"]), 2)
+        self.assertIn("zurückgestellt=0", out)
+        client.calls.clear()
+        execute(config, client)
+        self.assertEqual(len([call for call in client.calls if call[0] == "render"]), 2)
+        execute(config, client)
+        self.assertTrue(all(page["render"] for page in client.pages.values()))
+
+    def test_creates_continue_after_render_limit(self):
+        client = FakeClient(render_limit=1)
+        code, out, err = execute(self.config, client)
+        self.assertEqual(code, 0)
+        self.assertEqual(len([call for call in client.calls if call[0] == "create"]), 4)
+        self.assertEqual(len([call for call in client.calls if call[0] == "render"]), 1)
+        self.assertEqual(err.count("Render-Limit"), 1)
+        self.assertEqual(len([page for page in client.pages.values() if not page["render"]]), 3)
 
     def test_budget_defers_updates_and_keeps_old_content(self):
         client = FakeClient()

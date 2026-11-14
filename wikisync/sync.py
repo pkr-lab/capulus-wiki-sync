@@ -38,6 +38,7 @@ def differs(current: dict, page: Page) -> bool:
 class RenderBudget:
     def __init__(self, size: int):
         self.left = size
+        self.blocked = False
 
     def take(self) -> bool:
         if self.left < 1:
@@ -47,10 +48,11 @@ class RenderBudget:
 
     def exhaust(self) -> None:
         self.left = 0
+        self.blocked = True
 
 
 def queue_render(config: Config, client, budget: RenderBudget, report: Report, page_id: str, path: str) -> None:
-    if config.dry_run:
+    if config.dry_run or budget.blocked:
         return
     try:
         client.queue_render(page_id)
@@ -70,13 +72,10 @@ def reconcile(config: Config, client, pages: dict[str, Page]) -> Report:
         known = existing.get(path)
         try:
             if known is None:
-                if not budget.take():
-                    report.deferred.append(path)
-                    continue
                 page_id = None if config.dry_run else client.create(path, page.title, page.content, page.description)
                 report.created.append(path)
                 print(f"[CREATE] /{config.locale}/{path}")
-                if page_id:
+                if page_id and budget.take():
                     queue_render(config, client, budget, report, page_id, path)
                 continue
             current = client.get_page(known.id)
