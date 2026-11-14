@@ -29,6 +29,8 @@ class Config:
     legacy_prefixes: tuple[str, ...]
     dry_run: bool
     min_pages: int
+    site_id: str = ""
+    render_batch: int = 8
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Config":
@@ -43,6 +45,12 @@ class Config:
             min_pages = int(env.get("MIN_PAGES", "20"))
         except ValueError as error:
             raise ConfigError("MIN_PAGES muss eine Zahl sein") from error
+        try:
+            render_batch = int(env.get("RENDER_BATCH", "8"))
+        except ValueError as error:
+            raise ConfigError("RENDER_BATCH muss eine Zahl sein") from error
+        if render_batch < 1:
+            raise ConfigError("RENDER_BATCH muss mindestens 1 sein")
         return cls(
             owner=env.get("GITHUB_OWNER", "pkr-lab"),
             repo=env.get("GITHUB_REPO", "pkr-lab-docs"),
@@ -56,4 +64,6 @@ class Config:
             legacy_prefixes=_split(env.get("WIKIJS_LEGACY_PREFIXES", "")),
             dry_run=_flag(env.get("DRY_RUN", "false")),
             min_pages=min_pages,
+            site_id=env.get("WIKIJS_SITE_ID", "").strip(),
+            render_batch=render_batch,
         )
