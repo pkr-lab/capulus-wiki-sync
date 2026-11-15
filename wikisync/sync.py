@@ -90,7 +90,7 @@ def reconcile(config: Config, client, pages: dict[str, Page]) -> Report:
                     report.deferred.append(path)
                     continue
                 if not config.dry_run:
-                    client.update(known.id, path, page.title, page.content, page.description)
+                    client.update(known.id, page.title, page.content, page.description)
                 report.updated.append(path)
                 print(f"[UPDATE] /{config.locale}/{path}")
                 queue_render(config, client, budget, report, known.id, path)
@@ -118,7 +118,7 @@ def delete_stale(config: Config, client, stale: list[tuple[str, str]], report: R
     for path, page_id in stale:
         try:
             if not config.dry_run:
-                client.delete(page_id, path)
+                client.delete(page_id)
             report.deleted.append(path)
             print(f"[DELETE] /{config.locale}/{path}")
         except WikiError as error:
