@@ -1,10 +1,28 @@
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 from .config import Config
 from .render import CollisionError, Page, build_pages
 from .source import fetch_tarball, read_tree
-from .wikijs import RenderLimitError, WikiClient, WikiError
+from .wikijs import Existing, RenderLimitError, WikiClient, WikiError
+
+UNLIMITED_RENDERS = 10**9
+
+
+class WikiApi(Protocol):
+    def list_pages(self) -> dict[str, Existing]: ...
+
+    def get_page(self, page_id: str) -> dict[str, Any]: ...
+
+    def create(self, path: str, title: str, content: str, description: str) -> str: ...
+
+    def update(self, page_id: str, title: str, content: str, description: str) -> None: ...
+
+    def queue_render(self, page_id: str) -> None: ...
+
+    def delete(self, page_id: str) -> None: ...
 
 
 @dataclass
@@ -17,6 +35,10 @@ class Report:
     rendered: int = 0
     errors: list[str] = field(default_factory=list)
 
+    def error(self, path: str, error: WikiError) -> None:
+        self.errors.append(f"{path}: {error}")
+        print(f"[ERR] {path}: {error}", file=sys.stderr)
+
 
 def normalized(text: str) -> str:
     return text.replace("\r\n", "\n").rstrip("\n")
@@ -26,7 +48,7 @@ def under(path: str, prefix: str) -> bool:
     return path == prefix or path.startswith(prefix + "/")
 
 
-def differs(current: dict, page: Page) -> bool:
+def differs(current: dict[str, Any], page: Page) -> bool:
     return (
         normalized(current["content"]) != normalized(page.content)
         or current["title"] != page.title
@@ -51,7 +73,7 @@ class RenderBudget:
         self.blocked = True
 
 
-def queue_render(config: Config, client, budget: RenderBudget, report: Report, page_id: str, path: str) -> None:
+def queue_render(config: Config, client: WikiApi, budget: RenderBudget, report: Report, page_id: str, path: str) -> None:
     if config.dry_run or budget.blocked:
         return
     try:
@@ -64,9 +86,9 @@ def queue_render(config: Config, client, budget: RenderBudget, report: Report, p
         print(f"[WARN] Render für {path} nicht eingereiht: {error}", file=sys.stderr)
 
 
-def reconcile(config: Config, client, pages: dict[str, Page]) -> Report:
+def reconcile(config: Config, client: WikiApi, pages: dict[str, Page]) -> Report:
     report = Report()
-    budget = RenderBudget(10**9 if config.dry_run else config.render_batch)
+    budget = RenderBudget(UNLIMITED_RENDERS if config.dry_run else config.render_batch)
     existing = client.list_pages()
     for path, page in sorted(pages.items()):
         known = existing.get(path)
@@ -84,7 +106,7 @@ def reconcile(config: Config, client, pages: dict[str, Page]) -> Report:
                     report.deferred.append(path)
                     continue
                 if not config.dry_run:
-                    client.update(known.id, path, page.title, page.content, page.description)
+                    client.update(known.id, page.title, page.content, page.description)
                 report.updated.append(path)
                 print(f"[UPDATE] /{config.locale}/{path}")
                 queue_render(config, client, budget, report, known.id, path)
@@ -94,27 +116,32 @@ def reconcile(config: Config, client, pages: dict[str, Page]) -> Report:
             else:
                 report.unchanged += 1
         except WikiError as error:
-            report.errors.append(f"{path}: {error}")
-            print(f"[ERR] {path}: {error}", file=sys.stderr)
-    stale = [
+            report.error(path, error)
+    delete_stale(config, client, stale_pages(config, existing, pages), report)
+    return report
+
+
+def stale_pages(config: Config, existing: dict[str, Existing], pages: dict[str, Page]) -> list[tuple[str, str]]:
+    return sorted(
         (path, known.id)
         for path, known in existing.items()
         if (under(path, config.prefix) and path not in pages)
         or any(under(path, legacy) for legacy in config.legacy_prefixes)
-    ]
-    for path, page_id in sorted(stale):
+    )
+
+
+def delete_stale(config: Config, client: WikiApi, stale: list[tuple[str, str]], report: Report) -> None:
+    for path, page_id in stale:
         try:
             if not config.dry_run:
-                client.delete(page_id, path)
+                client.delete(page_id)
             report.deleted.append(path)
             print(f"[DELETE] /{config.locale}/{path}")
         except WikiError as error:
-            report.errors.append(f"{path}: {error}")
-            print(f"[ERR] {path}: {error}", file=sys.stderr)
-    return report
+            report.error(path, error)
 
 
-def run(config: Config, fetch=fetch_tarball, client=None) -> int:
+def run(config: Config, fetch: Callable[[str, str, str, str], bytes] = fetch_tarball, client: WikiApi | None = None) -> int:
     client = client or WikiClient(config.api_url, config.api_token, config.locale, config.site_id)
     try:
         data = fetch(config.owner, config.repo, config.branch, config.github_token)

@@ -2,10 +2,11 @@ import io
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
+from tests.helpers import FakeClient, make_config, make_tarball
 from wikisync.config import Config, ConfigError
 from wikisync.source import read_tree
 from wikisync.sync import run
-from tests.helpers import FakeClient, make_config, make_tarball
+from wikisync.wikijs import WikiError
 
 FILES = {
     "README.md": "# Home\n[p](p/index.md)\n",
@@ -103,6 +104,28 @@ class RunTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(client.calls, [])
 
+    def test_page_errors_are_reported_and_others_continue(self):
+        class FailingClient(FakeClient):
+            def get_page(self, page_id):
+                if page_id == self.pages["docs/p"]["id"]:
+                    raise WikiError("kaputt")
+                return super().get_page(page_id)
+
+            def delete(self, page_id):
+                raise WikiError("gesperrt")
+
+        client = FailingClient({"docs/old": {"title": "o", "content": "o", "description": ""}})
+        execute(self.config, client)
+        client.calls.clear()
+        changed = dict(FILES, **{"README.md": "# Home neu\n"})
+        code, out, err = execute(self.config, client, changed)
+        self.assertEqual(code, 1)
+        self.assertEqual(client.calls, [("update", "docs"), ("render", "docs")])
+        self.assertIn("[ERR] docs/p: kaputt", err)
+        self.assertIn("[ERR] docs/old: gesperrt", err)
+        self.assertNotIn("[DELETE]", out)
+        self.assertIn("Fehler=2", out)
+
 
 class RenderTests(unittest.TestCase):
     def setUp(self):
@@ -193,6 +216,19 @@ class ConfigTests(unittest.TestCase):
         for value in ("x", "0"):
             with self.assertRaises(ConfigError):
                 Config.from_env({"WIKIJS_API_URL": "http://w", "WIKIJS_API_TOKEN": "t", "RENDER_BATCH": value})
+
+    def test_min_pages(self):
+        base = {"WIKIJS_API_URL": "http://w", "WIKIJS_API_TOKEN": "t"}
+        self.assertEqual(Config.from_env(base).min_pages, 20)
+        self.assertEqual(Config.from_env(dict(base, MIN_PAGES="5")).min_pages, 5)
+        with self.assertRaisesRegex(ConfigError, "^MIN_PAGES muss eine Zahl sein$"):
+            Config.from_env(dict(base, MIN_PAGES="x"))
+
+    def test_error_messages(self):
+        with self.assertRaisesRegex(ConfigError, "^Pflichtvariablen fehlen: WIKIJS_API_URL, WIKIJS_API_TOKEN$"):
+            Config.from_env({})
+        with self.assertRaisesRegex(ConfigError, "^RENDER_BATCH muss eine Zahl sein$"):
+            Config.from_env({"WIKIJS_API_URL": "http://w", "WIKIJS_API_TOKEN": "t", "RENDER_BATCH": "x"})
 
 
 if __name__ == "__main__":

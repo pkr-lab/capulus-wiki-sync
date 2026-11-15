@@ -1,6 +1,12 @@
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Self
+
+DEFAULT_MIN_PAGES = 20
+DEFAULT_RENDER_BATCH = 8
+DEFAULT_EXCLUDE = ".github/**,scripts/**,CLAUDE.md,LICENSE,CHANGELOG.md,capulus-core/archiv/**"
+REQUIRED = ("WIKIJS_API_URL", "WIKIJS_API_TOKEN")
 
 
 class ConfigError(Exception):
@@ -13,6 +19,13 @@ def _split(value: str) -> tuple[str, ...]:
 
 def _flag(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes"}
+
+
+def _number(env: Mapping[str, str], name: str, default: int) -> int:
+    try:
+        return int(env.get(name, str(default)))
+    except ValueError as error:
+        raise ConfigError(f"{name} muss eine Zahl sein") from error
 
 
 @dataclass(frozen=True)
@@ -30,25 +43,19 @@ class Config:
     dry_run: bool
     min_pages: int
     site_id: str = ""
-    render_batch: int = 8
+    render_batch: int = DEFAULT_RENDER_BATCH
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None) -> "Config":
+    def from_env(cls, env: Mapping[str, str] | None = None) -> Self:
         env = os.environ if env is None else env
-        missing = [name for name in ("WIKIJS_API_URL", "WIKIJS_API_TOKEN") if not env.get(name)]
+        missing = [name for name in REQUIRED if not env.get(name)]
         if missing:
             raise ConfigError("Pflichtvariablen fehlen: " + ", ".join(missing))
         prefix = env.get("WIKIJS_PATH_PREFIX", "docs").strip("/")
         if not prefix:
             raise ConfigError("WIKIJS_PATH_PREFIX darf nicht leer sein")
-        try:
-            min_pages = int(env.get("MIN_PAGES", "20"))
-        except ValueError as error:
-            raise ConfigError("MIN_PAGES muss eine Zahl sein") from error
-        try:
-            render_batch = int(env.get("RENDER_BATCH", "8"))
-        except ValueError as error:
-            raise ConfigError("RENDER_BATCH muss eine Zahl sein") from error
+        min_pages = _number(env, "MIN_PAGES", DEFAULT_MIN_PAGES)
+        render_batch = _number(env, "RENDER_BATCH", DEFAULT_RENDER_BATCH)
         if render_batch < 1:
             raise ConfigError("RENDER_BATCH muss mindestens 1 sein")
         return cls(
@@ -60,7 +67,7 @@ class Config:
             api_token=env["WIKIJS_API_TOKEN"],
             locale=env.get("WIKIJS_LOCALE", "en"),
             prefix=prefix,
-            exclude=_split(env.get("EXCLUDE", ".github/**,scripts/**,CLAUDE.md,LICENSE,CHANGELOG.md,capulus-core/archiv/**")),
+            exclude=_split(env.get("EXCLUDE", DEFAULT_EXCLUDE)),
             legacy_prefixes=_split(env.get("WIKIJS_LEGACY_PREFIXES", "")),
             dry_run=_flag(env.get("DRY_RUN", "false")),
             min_pages=min_pages,

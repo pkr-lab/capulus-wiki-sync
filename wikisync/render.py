@@ -14,6 +14,7 @@ HTML_ATTR = re.compile(r"(\b(?:src|href)=\")([^\"]+)(\")")
 NUMBERED = re.compile(r"^([0-9a-f]{5})[-_.]")
 SEGMENT = re.compile(r"[\W_]+")
 MERMAID_OPEN = re.compile(r"^(`{3,}|~{3,})\s*mermaid\s*$")
+URL_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
 class CollisionError(Exception):
@@ -106,7 +107,7 @@ def has_directory_page(tree: Tree, directory: str) -> bool:
 
 
 def resolve_target(config: Config, tree: Tree, source: str, target: str, image: bool) -> str | None:
-    if not target or target.startswith(("#", "/", "//")) or re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", target):
+    if not target or target.startswith(("#", "/", "//")) or URL_SCHEME.match(target):
         return None
     path, _, anchor = target.partition("#")
     suffix = f"#{anchor}" if anchor else ""
@@ -128,21 +129,17 @@ def resolve_target(config: Config, tree: Tree, source: str, target: str, image: 
 def rewrite_line(config: Config, tree: Tree, source: str, line: str) -> str:
     spans = [(match.start(), match.end()) for match in CODE_SPAN.finditer(line)]
 
-    def in_code(position: int) -> bool:
-        return any(start <= position < end for start, end in spans)
-
-    def replace_link(match: re.Match[str]) -> str:
-        if in_code(match.start()):
+    def replace(match: re.Match[str], image: bool) -> str:
+        if any(start <= match.start() < end for start, end in spans):
             return match.group(0)
-        image = match.group(1).startswith("!")
         new = resolve_target(config, tree, source, match.group(2), image)
         return match.group(0) if new is None else match.group(1) + new + match.group(3)
 
+    def replace_link(match: re.Match[str]) -> str:
+        return replace(match, match.group(1).startswith("!"))
+
     def replace_attr(match: re.Match[str]) -> str:
-        if in_code(match.start()):
-            return match.group(0)
-        new = resolve_target(config, tree, source, match.group(2), match.group(1).startswith("src"))
-        return match.group(0) if new is None else match.group(1) + new + match.group(3)
+        return replace(match, match.group(1).startswith("src"))
 
     return HTML_ATTR.sub(replace_attr, MD_LINK.sub(replace_link, line))
 
@@ -168,7 +165,7 @@ def children(tree: Tree, directory: str) -> tuple[list[str], list[str]]:
         for relative in tree.markdown
         if relative.startswith(prefix)
         and "/" not in relative[len(prefix):]
-        and relative[len(prefix):].lower() not in {"index.md"}
+        and relative[len(prefix):].lower() != "index.md"
         and not (directory == "" and relative == "README.md")
     )
     directories = sorted(

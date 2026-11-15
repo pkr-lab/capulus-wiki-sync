@@ -49,7 +49,7 @@ class FakeClient:
     def list_pages(self):
         from wikisync.wikijs import Existing
 
-        return {path: Existing(id=page["id"], path=path, title=page["title"]) for path, page in self.pages.items()}
+        return {path: Existing(id=page["id"]) for path, page in self.pages.items()}
 
     def get_page(self, page_id):
         for page in self.pages.values():
@@ -69,7 +69,8 @@ class FakeClient:
         self.pages[path] = {"id": f"id-{self.next_id}", "title": title, "content": content, "description": description, "render": ""}
         return self.pages[path]["id"]
 
-    def update(self, page_id, path, title, content, description):
+    def update(self, page_id, title, content, description):
+        path = self.path_of(page_id)
         self.calls.append(("update", path))
         self.pages[path].update(title=title, content=content, description=description, render="")
 
@@ -86,6 +87,13 @@ class FakeClient:
                 return
         raise AssertionError("unbekannte Seite")
 
-    def delete(self, page_id, path):
+    def delete(self, page_id):
+        path = self.path_of(page_id)
         self.calls.append(("delete", path))
         del self.pages[path]
+
+    def path_of(self, page_id):
+        for path, page in self.pages.items():
+            if page["id"] == page_id:
+                return path
+        raise AssertionError("unbekannte Seite")

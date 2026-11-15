@@ -1,8 +1,8 @@
 import unittest
 
+from tests.helpers import make_config
 from wikisync.render import CollisionError, build_pages, page_title, rewrite_links, wiki_path, wrap_diagrams
 from wikisync.source import Tree
-from tests.helpers import make_config
 
 
 class PathTests(unittest.TestCase):

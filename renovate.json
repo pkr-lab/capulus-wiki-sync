@@ -13,6 +13,13 @@
   "vulnerabilityAlerts": {
     "enabled": false
   },
+  "packageRules": [
+    {
+      "description": "Entwicklungswerkzeuge lösen kein Release des Images aus",
+      "matchFileNames": ["requirements-dev.txt"],
+      "commitMessagePrefix": "ci(deps):"
+    }
+  ],
   "prConcurrentLimit": 5,
   "prHourlyLimit": 0
 }
