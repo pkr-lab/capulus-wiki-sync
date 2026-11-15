@@ -74,7 +74,7 @@ class RequestTests(unittest.TestCase):
         self.urlopen(http_error(500), http_error(503), http_error(500, "zuletzt"))
         with self.assertRaisesRegex(WikiError, "^HTTP 500 von Wiki.js: zuletzt$"):
             self.client.request("GET", "/x")
-        self.assertEqual([call.args[0] for call in self.sleep.call_args_list], [2, 4, 6])
+        self.assertEqual([call.args[0] for call in self.sleep.call_args_list], [2, 4])
 
     def test_unreachable(self):
         self.urlopen(TimeoutError("t"), TimeoutError("t"), TimeoutError("t"))

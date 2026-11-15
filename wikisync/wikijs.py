@@ -56,7 +56,8 @@ class WikiClient:
                 last = WikiError(message)
             except (urllib.error.URLError, TimeoutError) as error:
                 last = WikiError(f"Wiki.js nicht erreichbar: {error}")
-            time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+            if attempt < self.retries:
+                time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
         raise last or WikiError("Wiki.js nicht erreichbar")
 
     def site(self) -> str:
