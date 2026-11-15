@@ -4,8 +4,10 @@ import posixpath
 import tarfile
 import urllib.request
 from dataclasses import dataclass, field
+from typing import Self
 
 MAX_BYTES = 64 * 1024 * 1024
+FETCH_TIMEOUT = 60
 
 
 @dataclass(frozen=True)
@@ -15,7 +17,7 @@ class Tree:
     directories: frozenset[str] = frozenset()
 
     @classmethod
-    def of(cls, markdown: dict[str, str], others: frozenset[str] | set[str] = frozenset()) -> "Tree":
+    def of(cls, markdown: dict[str, str], others: frozenset[str] | set[str] = frozenset()) -> Self:
         found: set[str] = set()
         for relative in markdown:
             directory = relative.rpartition("/")[0]
@@ -36,8 +38,8 @@ def fetch_tarball(owner: str, repo: str, branch: str, token: str) -> bytes:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(tarball_url(owner, repo, branch), headers=headers)
-    with urllib.request.urlopen(request, timeout=60) as response:
-        data = response.read(MAX_BYTES + 1)
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT) as response:
+        data: bytes = response.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise ValueError("Tarball ist größer als erlaubt")
     return data
