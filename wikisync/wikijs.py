@@ -6,6 +6,9 @@ import urllib.request
 from dataclasses import dataclass
 
 PAGE_SIZE = 1000
+TREE_DEPTH = 10
+REQUEST_TIMEOUT = 30
+RETRY_BACKOFF_SECONDS = 2
 
 
 class WikiError(Exception):
@@ -43,19 +46,19 @@ class WikiClient:
         last: Exception | None = None
         for attempt in range(self.retries + 1):
             try:
-                with urllib.request.urlopen(request, timeout=30) as response:
+                with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
                     raw = response.read()
                 return json.loads(raw) if raw else {}
             except urllib.error.HTTPError as error:
-                detail = error.read().decode(errors="replace")
+                message = f"HTTP {error.code} von Wiki.js: {error.read().decode(errors='replace')}"
                 if error.code == 429:
-                    raise RenderLimitError(f"HTTP 429 von Wiki.js: {detail}") from error
+                    raise RenderLimitError(message) from error
                 if error.code < 500:
-                    raise WikiError(f"HTTP {error.code} von Wiki.js: {detail}") from error
-                last = WikiError(f"HTTP {error.code} von Wiki.js: {detail}")
+                    raise WikiError(message) from error
+                last = WikiError(message)
             except (urllib.error.URLError, TimeoutError) as error:
                 last = WikiError(f"Wiki.js nicht erreichbar: {error}")
-            time.sleep(2 * (attempt + 1))
+            time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
         raise last or WikiError("Wiki.js nicht erreichbar")
 
     def site(self) -> str:
@@ -76,7 +79,7 @@ class WikiClient:
             query = urllib.parse.urlencode(
                 {
                     "types": "page",
-                    "depth": 10,
+                    "depth": TREE_DEPTH,
                     "locale": self.locale,
                     "limit": PAGE_SIZE,
                     "offset": offset,
