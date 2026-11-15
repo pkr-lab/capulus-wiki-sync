@@ -5,6 +5,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from wikisync.config import Config, ConfigError
 from wikisync.source import read_tree
 from wikisync.sync import run
+from wikisync.wikijs import WikiError
 from tests.helpers import FakeClient, make_config, make_tarball
 
 FILES = {
@@ -102,6 +103,28 @@ class RunTests(unittest.TestCase):
             code = run(self.config, fetch=broken, client=client)
         self.assertEqual(code, 1)
         self.assertEqual(client.calls, [])
+
+    def test_page_errors_are_reported_and_others_continue(self):
+        class FailingClient(FakeClient):
+            def get_page(self, page_id):
+                if page_id == self.pages["docs/p"]["id"]:
+                    raise WikiError("kaputt")
+                return super().get_page(page_id)
+
+            def delete(self, page_id, path):
+                raise WikiError("gesperrt")
+
+        client = FailingClient({"docs/old": {"title": "o", "content": "o", "description": ""}})
+        execute(self.config, client)
+        client.calls.clear()
+        changed = dict(FILES, **{"README.md": "# Home neu\n"})
+        code, out, err = execute(self.config, client, changed)
+        self.assertEqual(code, 1)
+        self.assertEqual(client.calls, [("update", "docs"), ("render", "docs")])
+        self.assertIn("[ERR] docs/p: kaputt", err)
+        self.assertIn("[ERR] docs/old: gesperrt", err)
+        self.assertNotIn("[DELETE]", out)
+        self.assertIn("Fehler=2", out)
 
 
 class RenderTests(unittest.TestCase):
