@@ -1,6 +1,7 @@
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Self
 
 DEFAULT_MIN_PAGES = 20
 DEFAULT_RENDER_BATCH = 8
@@ -45,7 +46,7 @@ class Config:
     render_batch: int = DEFAULT_RENDER_BATCH
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None) -> "Config":
+    def from_env(cls, env: Mapping[str, str] | None = None) -> Self:
         env = os.environ if env is None else env
         missing = [name for name in REQUIRED if not env.get(name)]
         if missing:
