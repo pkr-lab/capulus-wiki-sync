@@ -22,8 +22,6 @@ class RenderLimitError(WikiError):
 @dataclass(frozen=True)
 class Existing:
     id: str
-    path: str
-    title: str
 
 
 class WikiClient:
@@ -92,7 +90,7 @@ class WikiClient:
                     continue
                 folder = entry.get("folderPath") or ""
                 path = f"{folder}/{entry['fileName']}" if folder else entry["fileName"]
-                found[path] = Existing(id=entry["id"], path=path, title=entry["title"])
+                found[path] = Existing(id=entry["id"])
             if len(entries) < PAGE_SIZE:
                 return found
             offset += PAGE_SIZE
@@ -116,7 +114,7 @@ class WikiClient:
         )
         return data["page"]["id"]
 
-    def update(self, page_id: str, path: str, title: str, content: str, description: str) -> None:
+    def update(self, page_id: str, title: str, content: str, description: str) -> None:
         self.request(
             "PATCH",
             self.pages_path(f"/{page_id}"),
@@ -132,5 +130,5 @@ class WikiClient:
     def queue_render(self, page_id: str) -> None:
         self.request("POST", self.pages_path(f"/{page_id}/render"))
 
-    def delete(self, page_id: str, path: str) -> None:
+    def delete(self, page_id: str) -> None:
         self.request("DELETE", self.pages_path(f"/{page_id}"))

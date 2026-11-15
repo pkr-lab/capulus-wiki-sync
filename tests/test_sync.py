@@ -111,7 +111,7 @@ class RunTests(unittest.TestCase):
                     raise WikiError("kaputt")
                 return super().get_page(page_id)
 
-            def delete(self, page_id, path):
+            def delete(self, page_id):
                 raise WikiError("gesperrt")
 
         client = FailingClient({"docs/old": {"title": "o", "content": "o", "description": ""}})

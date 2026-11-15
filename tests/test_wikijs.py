@@ -105,7 +105,7 @@ class ClientTests(unittest.TestCase):
             found = client.list_pages()
         self.assertEqual(len(found), PAGE_SIZE)
         self.assertEqual(found["home"].id, "root")
-        self.assertEqual(found["docs/p0"].path, "docs/p0")
+        self.assertEqual(found["docs/p0"].id, "0")
         paths = [call.args[1] for call in request.call_args_list]
         self.assertTrue(all(path.startswith("/sites/s1/tree?") for path in paths))
         self.assertIn("offset=0", paths[0])
@@ -116,9 +116,9 @@ class ClientTests(unittest.TestCase):
         client = WikiClient("http://wiki", "t", "en", site_id="s1")
         with mock.patch.object(client, "request", return_value={"page": {"id": "neu"}}) as request:
             self.assertEqual(client.create("docs/a", "A", "inhalt", "d"), "neu")
-            client.update("p1", "docs/a", "A", "inhalt", "d")
+            client.update("p1", "A", "inhalt", "d")
             client.queue_render("p1")
-            client.delete("p1", "docs/a")
+            client.delete("p1")
             client.get_page("p1")
         calls = [(call.args[0], call.args[1]) for call in request.call_args_list]
         self.assertEqual(
