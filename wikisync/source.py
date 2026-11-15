@@ -6,6 +6,7 @@ import urllib.request
 from dataclasses import dataclass, field
 
 MAX_BYTES = 64 * 1024 * 1024
+FETCH_TIMEOUT = 60
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,7 @@ def fetch_tarball(owner: str, repo: str, branch: str, token: str) -> bytes:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(tarball_url(owner, repo, branch), headers=headers)
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT) as response:
         data = response.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise ValueError("Tarball ist größer als erlaubt")
