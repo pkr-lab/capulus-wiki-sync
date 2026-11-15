@@ -2,11 +2,11 @@ import io
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
+from tests.helpers import FakeClient, make_config, make_tarball
 from wikisync.config import Config, ConfigError
 from wikisync.source import read_tree
 from wikisync.sync import run
 from wikisync.wikijs import WikiError
-from tests.helpers import FakeClient, make_config, make_tarball
 
 FILES = {
     "README.md": "# Home\n[p](p/index.md)\n",
