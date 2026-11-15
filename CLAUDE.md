@@ -8,7 +8,7 @@ Python-Programm (`wikisync`), das das Docs-Repo [pkr-lab-docs](https://github.co
 
 - **Keine Kommentare im Code.** Gilt für Python, Dockerfile und Workflows. Einzige Ausnahme: der Versions-Kommentar `# vX.Y.Z` hinter der Commit-SHA in `uses:`-Zeilen der Workflows (Renovate und Dependabot lesen ihn). Begründungen gehören ins Doc.
 - **Doku liegt nicht in diesem Repo, sondern in [pkr-lab-docs](https://github.com/pkr-lab/pkr-lab-docs):** Betrieb und Aufbau in `capulus/capulus-core/wiki-sync.md`, Hintergründe unter `capulus/capulus-core/6-hintergruende/` (Zuordnung in `60000-uebersicht.md`). Jede Codeänderung bekommt dort einen PR. Konventionen stehen in der `CLAUDE.md` von pkr-lab-docs.
-- **Nur Standardbibliothek.** Das Image kopiert nur `wikisync/` und installiert nichts (`python:3.14-slim`, Nutzer 1000). Keine neuen Abhängigkeiten ohne Rücksprache.
+- **Nur Standardbibliothek.** Das Image kopiert nur `wikisync/` und installiert nichts (`python:3.15-slim`, Nutzer 1000). Keine neuen Abhängigkeiten ohne Rücksprache.
 - **Niemals Tokens committen.** `WIKIJS_API_TOKEN` und `GITHUB_TOKEN` kommen nur aus der Umgebung (im Cluster als SealedSecret in capulus-core). gitleaks läuft in der CI (`.gitleaks.toml`).
 - **Der Sync löscht Seiten in Wiki.js.** Änderungen an `sync.py` und `wikijs.py` besonders sorgfältig prüfen; die Sicherung `MIN_PAGES` und `DRY_RUN` nicht aufweichen.
 - **Nie direkt auf `main` arbeiten.** Änderungen gehen nur per PR hinein (der Branch-Schutz auf GitHub ist hier nicht aktiv, die Regel gilt trotzdem). Steht das Arbeitsverzeichnis auf `main`, vor der ersten Änderung einen neuen Branch anlegen (`git switch -c <typ>/<kurzbeschreibung>`, z. B. `feat/backup-retention`, `fix/ca-pin`) und nur dort arbeiten. Den Branch legt Claude an, Commit, Push und PR macht der Nutzer.
@@ -25,7 +25,8 @@ Python-Programm (`wikisync`), das das Docs-Repo [pkr-lab-docs](https://github.co
 | `wikisync/render.py` | Seiten bauen: Pfade, Links und Bilder umschreiben, Übersichtsseiten erzeugen |
 | `wikisync/wikijs.py` | REST-Client für Wiki.js 3 |
 | `wikisync/sync.py` | Abgleich: anlegen, ändern, löschen |
-| `tests/` | `unittest`, Hilfen in `tests/helpers.py` (`make_config`) |
+| `tests/` | `unittest`, Hilfen in `tests/helpers.py` (`make_config`, `FakeClient`) |
+| `pyproject.toml`, `requirements-dev.txt` | Konfiguration und gepinnte Versionen von ruff und mypy, nur für die CI |
 
 Wichtige Variablen: `WIKIJS_API_URL`, `WIKIJS_API_TOKEN` (Pflicht), `WIKIJS_PATH_PREFIX` (Standard `docs`), `GITHUB_OWNER`/`GITHUB_REPO`/`GITHUB_BRANCH`/`GITHUB_TOKEN`, `EXCLUDE`, `WIKIJS_LEGACY_PREFIXES`, `MIN_PAGES` (Standard 20), `DRY_RUN`, `WIKIJS_SITE_ID` (optional, sonst über `/_api/bootstrap`), `RENDER_BATCH` (Standard 8, Seiten pro Lauf mit Render).
 
@@ -33,10 +34,11 @@ Wichtige Variablen: `WIKIJS_API_URL`, `WIKIJS_API_TOKEN` (Pflicht), `WIKIJS_PATH
 
 ## Prüfen vor dem Commit
 
-Die CI (`.github/workflows/ci.yml`) hat drei Pflicht-Jobs: `unittest`, `docker build` (der Aufruf ohne Konfiguration muss mit Exit-Code 2 enden), gitleaks.
+Die CI (`.github/workflows/ci.yml`) hat vier Pflicht-Jobs: `unittest`, `ruff und mypy`, `docker build` (der Aufruf ohne Konfiguration muss mit Exit-Code 2 enden), gitleaks.
 
 ```bash
 python3 -m unittest discover -s . -t .
+python3 -m pip install -r requirements-dev.txt && ruff check . && mypy
 docker build -t capulus-wiki-sync:ci . && docker run --rm capulus-wiki-sync:ci; echo $?
 ```
 
@@ -46,7 +48,7 @@ Gegen ein echtes Wiki.js nur mit `DRY_RUN=true` und nur durch den Nutzer; die Sa
 
 ## Code-Stil
 
-- Typannotationen überall, `dataclass(frozen=True)` für Werte, Fehler als eigene Exceptions (`ConfigError`, `CollisionError`, `WikiError`).
+- Typannotationen überall (`mypy --strict` für `wikisync/`), der Client wird über das Protocol `WikiApi` in `sync.py` angesprochen, `dataclass(frozen=True)` für Werte, Fehler als eigene Exceptions (`ConfigError`, `CollisionError`, `WikiError`).
 - Logmeldungen mit Präfix (`[CREATE]`, `[FATAL]` usw.), Fehler nach stderr.
 - Zu jeder Verhaltensänderung in `render.py` oder `sync.py` gehört ein Test in `tests/`.
 
