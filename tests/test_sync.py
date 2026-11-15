@@ -194,6 +194,19 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(ConfigError):
                 Config.from_env({"WIKIJS_API_URL": "http://w", "WIKIJS_API_TOKEN": "t", "RENDER_BATCH": value})
 
+    def test_min_pages(self):
+        base = {"WIKIJS_API_URL": "http://w", "WIKIJS_API_TOKEN": "t"}
+        self.assertEqual(Config.from_env(base).min_pages, 20)
+        self.assertEqual(Config.from_env(dict(base, MIN_PAGES="5")).min_pages, 5)
+        with self.assertRaisesRegex(ConfigError, "^MIN_PAGES muss eine Zahl sein$"):
+            Config.from_env(dict(base, MIN_PAGES="x"))
+
+    def test_error_messages(self):
+        with self.assertRaisesRegex(ConfigError, "^Pflichtvariablen fehlen: WIKIJS_API_URL, WIKIJS_API_TOKEN$"):
+            Config.from_env({})
+        with self.assertRaisesRegex(ConfigError, "^RENDER_BATCH muss eine Zahl sein$"):
+            Config.from_env({"WIKIJS_API_URL": "http://w", "WIKIJS_API_TOKEN": "t", "RENDER_BATCH": "x"})
+
 
 if __name__ == "__main__":
     unittest.main()
