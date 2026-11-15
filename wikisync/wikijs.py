@@ -4,6 +4,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from typing import Any
 
 PAGE_SIZE = 1000
 TREE_DEPTH = 10
@@ -32,7 +33,7 @@ class WikiClient:
         self.site_id = site_id
         self.retries = retries
 
-    def request(self, method: str, path: str, body: dict | None = None, authorized: bool = True):
+    def request(self, method: str, path: str, body: dict[str, Any] | None = None, authorized: bool = True) -> Any:
         headers = {"Accept": "application/json"}
         data = None
         if body is not None:
@@ -96,8 +97,9 @@ class WikiClient:
                 return found
             offset += PAGE_SIZE
 
-    def get_page(self, page_id: str) -> dict:
-        return self.request("GET", self.pages_path(f"/{page_id}?withContent=true"))
+    def get_page(self, page_id: str) -> dict[str, Any]:
+        page: dict[str, Any] = self.request("GET", self.pages_path(f"/{page_id}?withContent=true"))
+        return page
 
     def create(self, path: str, title: str, content: str, description: str) -> str:
         data = self.request(
@@ -113,7 +115,8 @@ class WikiClient:
                 "publishState": "published",
             },
         )
-        return data["page"]["id"]
+        page_id: str = data["page"]["id"]
+        return page_id
 
     def update(self, page_id: str, title: str, content: str, description: str) -> None:
         self.request(
