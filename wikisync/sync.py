@@ -4,7 +4,9 @@ from dataclasses import dataclass, field
 from .config import Config
 from .render import CollisionError, Page, build_pages
 from .source import fetch_tarball, read_tree
-from .wikijs import RenderLimitError, WikiClient, WikiError
+from .wikijs import Existing, RenderLimitError, WikiClient, WikiError
+
+UNLIMITED_RENDERS = 10**9
 
 
 @dataclass
@@ -16,6 +18,10 @@ class Report:
     deferred: list[str] = field(default_factory=list)
     rendered: int = 0
     errors: list[str] = field(default_factory=list)
+
+    def error(self, path: str, error: WikiError) -> None:
+        self.errors.append(f"{path}: {error}")
+        print(f"[ERR] {path}: {error}", file=sys.stderr)
 
 
 def normalized(text: str) -> str:
@@ -66,7 +72,7 @@ def queue_render(config: Config, client, budget: RenderBudget, report: Report, p
 
 def reconcile(config: Config, client, pages: dict[str, Page]) -> Report:
     report = Report()
-    budget = RenderBudget(10**9 if config.dry_run else config.render_batch)
+    budget = RenderBudget(UNLIMITED_RENDERS if config.dry_run else config.render_batch)
     existing = client.list_pages()
     for path, page in sorted(pages.items()):
         known = existing.get(path)
@@ -94,24 +100,29 @@ def reconcile(config: Config, client, pages: dict[str, Page]) -> Report:
             else:
                 report.unchanged += 1
         except WikiError as error:
-            report.errors.append(f"{path}: {error}")
-            print(f"[ERR] {path}: {error}", file=sys.stderr)
-    stale = [
+            report.error(path, error)
+    delete_stale(config, client, stale_pages(config, existing, pages), report)
+    return report
+
+
+def stale_pages(config: Config, existing: dict[str, Existing], pages: dict[str, Page]) -> list[tuple[str, str]]:
+    return sorted(
         (path, known.id)
         for path, known in existing.items()
         if (under(path, config.prefix) and path not in pages)
         or any(under(path, legacy) for legacy in config.legacy_prefixes)
-    ]
-    for path, page_id in sorted(stale):
+    )
+
+
+def delete_stale(config: Config, client, stale: list[tuple[str, str]], report: Report) -> None:
+    for path, page_id in stale:
         try:
             if not config.dry_run:
                 client.delete(page_id, path)
             report.deleted.append(path)
             print(f"[DELETE] /{config.locale}/{path}")
         except WikiError as error:
-            report.errors.append(f"{path}: {error}")
-            print(f"[ERR] {path}: {error}", file=sys.stderr)
-    return report
+            report.error(path, error)
 
 
 def run(config: Config, fetch=fetch_tarball, client=None) -> int:
